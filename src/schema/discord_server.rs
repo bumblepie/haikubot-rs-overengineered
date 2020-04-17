@@ -1,8 +1,10 @@
-use super::super::error::{DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD};
-use juniper::{FieldError, FieldResult};
-
+use super::super::error::{
+    QueryCreationError, DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD,
+};
 use super::discord_channel::DiscordChannel;
 use super::haiku::Haiku;
+use super::util;
+use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection};
 
 #[derive(Debug)]
 pub struct DiscordServer {
@@ -43,17 +45,46 @@ impl DiscordServer {
     }
 
     fn haikus(&self) -> FieldResult<Vec<Haiku>> {
-        match self.result_json.get("haikus") {
-            Some(serde_json::Value::Array(haikus)) => Ok(haikus
+        if let Some(serde_json::Value::Array(channels)) = self.result_json.get("haiku_channels") {
+            Ok(channels
                 .iter()
-                .map(|json| Haiku {
-                    result_json: json.clone(),
+                .flat_map(|channel_json| match channel_json.get("haikus") {
+                    Some(serde_json::Value::Array(haikus)) => haikus
+                        .iter()
+                        .map(|haiku_json| Haiku {
+                            result_json: haiku_json.clone(),
+                        })
+                        .collect::<Vec<Haiku>>(),
+                    _ => vec![],
                 })
-                .collect()),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
+                .collect::<Vec<Haiku>>())
+        } else {
+            Ok(vec![])
+        }
+    }
+}
+
+impl util::MapsToDgraphQuery for DiscordServer {
+    fn generate_inner_query_for_field(
+        field_name: &str,
+        child_selection: &LookAheadSelection<DefaultScalarValue>,
+    ) -> Result<String, QueryCreationError> {
+        match field_name {
+            "discordSnowflake" => Ok("discordSnowflake".to_owned()),
+            "channels" => Ok(format!(
+                "channels: ~server @filter(type(DiscordChannel)) {{ {} }}",
+                DiscordChannel::generate_inner_query(child_selection)?
             )),
+            "haikus" => Ok(format!(
+                r#"
+                haiku_channels: ~server @filter(type(DiscordChannel)) {{
+                    haikus: ~channel @filter(type(Haiku)) {{
+                        {}
+                    }}
+                }}"#,
+                Haiku::generate_inner_query(child_selection)?
+            )),
+            unknown_field => Err(QueryCreationError::UnknownField(unknown_field.to_owned())),
         }
     }
 }
@@ -74,9 +105,13 @@ mod test {
             "channels": [{
                 "discordSnowflake": "0000000000000000002"
             }],
-            "haikus": [{
-                "id": "1"
-            }],
+            "haiku_channels": [
+                {
+                    "haikus": [{
+                        "id": "1"
+                    }],
+                }
+            ]
         });
         let query = r#"
         query {
@@ -117,16 +152,20 @@ mod test {
 
     #[test]
     fn resolve_missing_fields() {
-        util::resolve_missing_field::<DiscordServer>(
+        util::resolve_missing_field_error::<DiscordServer>(
             r#"query { discordSnowflake }"#,
             "discordSnowflake",
             (),
         );
-        util::resolve_missing_field::<DiscordServer>(r#"query { haikus { id } }"#, "haikus", ());
-        util::resolve_missing_field::<DiscordServer>(
-            r#"query { channels { discordSnowflake } }"#,
-            "channels",
-            (),
-        );
+        // util::resolve_missing_field_error::<DiscordServer>(
+        //     r#"query { haikus { id } }"#,
+        //     "haikus",
+        //     (),
+        // );
+        // util::resolve_missing_field_error::<DiscordServer>(
+        //     r#"query { channels { discordSnowflake } }"#,
+        //     "channels",
+        //     (),
+        // );
     }
 }

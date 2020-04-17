@@ -1,7 +1,9 @@
-use super::super::error::{DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD};
-use juniper::{FieldError, FieldResult};
-
+use super::super::error::{
+    QueryCreationError, DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD,
+};
 use super::haiku::Haiku;
+use super::util;
+use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection};
 
 #[derive(Debug)]
 pub struct DiscordUser {
@@ -38,6 +40,22 @@ impl DiscordUser {
                 UNABLE_TO_RESOLVE_FIELD,
                 graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
             )),
+        }
+    }
+}
+
+impl util::MapsToDgraphQuery for DiscordUser {
+    fn generate_inner_query_for_field(
+        field_name: &str,
+        child_selection: &LookAheadSelection<DefaultScalarValue>,
+    ) -> Result<String, QueryCreationError> {
+        match field_name {
+            "discordSnowflake" => Ok("discordSnowflake".to_owned()),
+            "haikus" => Ok(format!(
+                "haikus: ~author @filter(type(Haiku)) {{ {} }}",
+                Haiku::generate_inner_query(child_selection)?
+            )),
+            unknown_field => Err(QueryCreationError::UnknownField(unknown_field.to_owned())),
         }
     }
 }
@@ -92,11 +110,15 @@ mod test {
 
     #[test]
     fn resolve_missing_fields() {
-        util::resolve_missing_field::<DiscordUser>(
+        util::resolve_missing_field_error::<DiscordUser>(
             r#"query { discordSnowflake }"#,
             "discordSnowflake",
             (),
         );
-        util::resolve_missing_field::<DiscordUser>(r#"query { haikus { id } }"#, "haikus", ());
+        util::resolve_missing_field_error::<DiscordUser>(
+            r#"query { haikus { id } }"#,
+            "haikus",
+            (),
+        );
     }
 }

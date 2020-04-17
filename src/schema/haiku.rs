@@ -1,10 +1,12 @@
-use super::super::error::{DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD};
+use super::super::error::{
+    QueryCreationError, DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD,
+};
 use super::discord_channel::DiscordChannel;
 use super::discord_server::DiscordServer;
 use super::discord_user::DiscordUser;
+use super::util;
 use chrono::{DateTime, FixedOffset};
-use juniper::{FieldError, FieldResult, ID};
-
+use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection, ID};
 #[derive(Debug)]
 pub struct Haiku {
     pub result_json: serde_json::Value,
@@ -43,14 +45,9 @@ impl Haiku {
         }
     }
 
-    fn lines(&self) -> FieldResult<Vec<String>> {
-        match self.result_json.get("lines") {
-            Some(lines) => serde_json::from_value(lines.clone()).map_err(|_| {
-                FieldError::new(
-                    UNABLE_TO_RESOLVE_FIELD,
-                    graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
-                )
-            }),
+    fn content(&self) -> FieldResult<String> {
+        match self.result_json.get("content") {
+            Some(serde_json::Value::String(content)) => Ok(content.clone()),
             _ => Err(FieldError::new(
                 UNABLE_TO_RESOLVE_FIELD,
                 graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
@@ -71,8 +68,12 @@ impl Haiku {
     }
 
     fn server(&self) -> FieldResult<DiscordServer> {
-        match self.result_json.get("server") {
-            Some(json) => Ok(DiscordServer {
+        match self
+            .result_json
+            .get("server_channel")
+            .map(|channel_json| channel_json.get("server"))
+        {
+            Some(Some(json)) => Ok(DiscordServer {
                 result_json: json.clone(),
             }),
             _ => Err(FieldError::new(
@@ -111,6 +112,36 @@ impl Haiku {
     }
 }
 
+impl util::MapsToDgraphQuery for Haiku {
+    fn generate_inner_query_for_field(
+        field_name: &str,
+        child_selection: &LookAheadSelection<DefaultScalarValue>,
+    ) -> Result<String, QueryCreationError> {
+        match field_name {
+            "id" => Ok("id: uid".to_owned()),
+            "authors" => Ok(format!(
+                "authors: author @filter(type(DiscordUser)) {{ {} }}",
+                DiscordUser::generate_inner_query(child_selection)?
+            )),
+            "content" => Ok("content".to_owned()),
+            "channel" => Ok(format!(
+                "channel @filter(type(DiscordChannel)) {{ {} }}",
+                DiscordChannel::generate_inner_query(child_selection)?
+            )),
+            "server" => Ok(format!(
+                r#"
+                server_channel: channel @filter(type(DiscordChannel)) {{
+                    server @filter(type(DiscordServer)) {{
+                        {}
+                    }}
+                }}"#,
+                DiscordServer::generate_inner_query(child_selection)?
+            )),
+            unknown_field => Err(QueryCreationError::UnknownField(unknown_field.to_owned())),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::super::util;
@@ -127,16 +158,14 @@ mod test {
             "authors": [{
                 "discordSnowflake": "0000000000000000001"
             }],
-            "lines": [
-                "line 1",
-                "line 2",
-                "line 3"
-            ],
+            "content": "line 1\nline 2\nline 3",
             "channel": {
                 "discordSnowflake": "0000000000000000002"
             },
-            "server": {
-                "discordSnowflake": "0000000000000000003"
+            "server_channel": {
+                "server": {
+                    "discordSnowflake": "0000000000000000003"
+                }
             },
             "rulesVersion": 1,
             "timestamp": "1977-02-03T05:00:00+00:00"
@@ -147,7 +176,7 @@ mod test {
             authors {
                 discordSnowflake
             }
-            lines
+            content
             channel {
                 discordSnowflake
             }
@@ -177,11 +206,7 @@ mod test {
                 "authors": [{
                     "discordSnowflake": "0000000000000000001"
                 }],
-                "lines": [
-                    "line 1",
-                    "line 2",
-                    "line 3"
-                ],
+                "content": "line 1\nline 2\nline 3",
                 "channel": {
                     "discordSnowflake": "0000000000000000002"
                 },
@@ -196,24 +221,24 @@ mod test {
 
     #[test]
     fn resolve_missing_fields() {
-        util::resolve_missing_field::<Haiku>(r#"query { id }"#, "id", ());
-        util::resolve_missing_field::<Haiku>(
+        util::resolve_missing_field_error::<Haiku>(r#"query { id }"#, "id", ());
+        util::resolve_missing_field_error::<Haiku>(
             r#"query { authors { discordSnowflake } }"#,
             "authors",
             (),
         );
-        util::resolve_missing_field::<Haiku>(r#"query { lines }"#, "lines", ());
-        util::resolve_missing_field::<Haiku>(
+        util::resolve_missing_field_error::<Haiku>(r#"query { content }"#, "content", ());
+        util::resolve_missing_field_error::<Haiku>(
             r#"query { channel { discordSnowflake } }"#,
             "channel",
             (),
         );
-        util::resolve_missing_field::<Haiku>(
+        util::resolve_missing_field_error::<Haiku>(
             r#"query { server { discordSnowflake } }"#,
             "server",
             (),
         );
-        util::resolve_missing_field::<Haiku>(r#"query { rulesVersion }"#, "rulesVersion", ());
-        util::resolve_missing_field::<Haiku>(r#"query { timestamp }"#, "timestamp", ());
+        util::resolve_missing_field_error::<Haiku>(r#"query { rulesVersion }"#, "rulesVersion", ());
+        util::resolve_missing_field_error::<Haiku>(r#"query { timestamp }"#, "timestamp", ());
     }
 }

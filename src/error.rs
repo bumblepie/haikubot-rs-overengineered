@@ -40,5 +40,6 @@ impl std::convert::From<serde_json::Error> for DgraphQueryError {
 
 pub const INTERNAL_ERROR: &str = "internal_error";
 pub const UNABLE_TO_RESOLVE_FIELD: &str = "Unable to resolve field";
+pub const DB_QUERY_RESULT_ERR: &str = "DB query resulted in error";
 pub const DB_QUERY_RESULT_PARSE_ERR: &str = "Error parsing DB query result";
 pub const DB_QUERY_GENERATION_ERR: &str = "Error generating DB query";

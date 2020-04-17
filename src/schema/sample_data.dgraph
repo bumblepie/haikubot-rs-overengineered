@@ -1,0 +1,24 @@
+{
+  set {
+  _:server <discordSnowflake> "1" .
+  _:server <dgraph.type> "DiscordServer" .
+  
+  _:channel <discordSnowflake> "2" .
+  _:channel <server> _:server .
+  _:channel <dgraph.type> "DiscordChannel" .
+  
+  _:user1 <discordSnowflake> "3" .
+  _:user1 <dgraph.type> "DiscordUser" .
+  
+  _:user2 <discordSnowflake> "4" .
+  _:user2 <dgraph.type> "DiscordUser" .
+  
+  _:haiku <author> _:user1 .
+  _:haiku <author> _:user2 .
+  _:haiku <content> "line 1\nline2\nline3" .
+  _:haiku <channel> _:channel .
+  _:haiku <rulesVersion> "0" .
+  _:haiku <timestamp> "1977-02-03T05:00:00+00:00" .
+  _:haiku <dgraph.type> "Haiku" .
+	}
+}

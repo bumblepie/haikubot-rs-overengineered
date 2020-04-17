@@ -1,9 +1,16 @@
-use super::super::error::{DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD};
-use juniper::{EmptyMutation, FieldError, GraphQLType, RootNode, Variables};
+use super::super::error::{
+    CompositeQueryCreationError, QueryCreationError, DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR,
+    UNABLE_TO_RESOLVE_FIELD,
+};
+use juniper::{
+    DefaultScalarValue, EmptyMutation, FieldError, GraphQLType, LookAheadMethods,
+    LookAheadSelection, RootNode, Variables,
+};
 use serde_json::json;
 
-/// Test what happens when the json returned by DGraph does not contain a field
-pub fn resolve_missing_field<T>(query: &str, path: &str, context: <T as GraphQLType>::Context)
+/// Test that a FieldError is the result when the json returned by DGraph does not contain a field
+#[allow(dead_code)]
+pub fn resolve_missing_field_error<T>(query: &str, path: &str, context: <T as GraphQLType>::Context)
 where
     T: From<serde_json::Value> + GraphQLType<TypeInfo = ()>,
 {
@@ -26,4 +33,39 @@ where
             graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
         )
     );
+}
+
+pub trait MapsToDgraphQuery {
+    fn generate_inner_query_for_field(
+        field_name: &str,
+        child_selection: &LookAheadSelection<DefaultScalarValue>,
+    ) -> Result<String, QueryCreationError>;
+
+    fn generate_inner_query(
+        selection: &LookAheadSelection<DefaultScalarValue>,
+    ) -> Result<String, QueryCreationError> {
+        let (query_sections, errs): (Vec<_>, Vec<_>) = selection
+            .child_names()
+            .iter()
+            .map(|field_name| (field_name, selection.select_child(field_name).unwrap()))
+            .map(|(&field_name, child_selection)| {
+                Self::generate_inner_query_for_field(field_name, child_selection)
+            })
+            .partition(Result::is_ok);
+        if errs.is_empty() {
+            // Extract Vec<Result<String, QueryCreationError>> into Vec<String> and join
+            Ok(query_sections
+                .into_iter()
+                .map(Result::unwrap)
+                .collect::<Vec<String>>()
+                .join("\n"))
+        } else {
+            // Extract Vec<Result<String, QueryCreationError>> into Vec<QueryCreationError>
+            // Gather errors into composite error
+            Err(QueryCreationError::Composite(CompositeQueryCreationError {
+                at_field: selection.field_name().to_owned(),
+                children: errs.into_iter().map(Result::unwrap_err).collect(),
+            }))
+        }
+    }
 }

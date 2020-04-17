@@ -1,0 +1,30 @@
+author: [uid] @reverse .
+channel: uid @reverse .
+discordSnowflake: string .
+content: string @index(term) .
+rulesVersion: int .
+server: uid @reverse .
+timestamp: datetime .
+
+type Haiku {
+    author
+    channel
+    content
+    rulesVersion
+    timestamp
+}
+
+type DiscordChannel {
+    discordSnowflake
+    server
+    <~channel>
+}
+
+type DiscordServer {
+    discordSnowflake
+    <~server>
+}
+
+type DiscordUser {
+    discordSnowflake
+}

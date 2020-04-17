@@ -1,24 +1,23 @@
 mod error;
 mod schema;
-use schema::{Context, Query, Schema};
 
 #[macro_use]
 extern crate juniper;
-use juniper::EmptyMutation;
-
 #[macro_use]
 extern crate dgraph;
+#[allow(unused_imports)]
 #[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate log;
 
-use std::io;
-use std::sync::Arc;
-
 use actix_web::{middleware, web, App, Error, HttpResponse, HttpServer};
 use juniper::http::graphiql::graphiql_source;
 use juniper::http::GraphQLRequest;
+use juniper::EmptyMutation;
+use schema::{Context, Query, Schema};
+use std::io;
+use std::sync::Arc;
 
 const PROTOCOL: &str = "http";
 const HOSTNAME: &str = "127.0.0.1";
