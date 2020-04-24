@@ -3,20 +3,18 @@ use std::collections::{HashSet};
 #[macro_use] extern crate juniper;
 use juniper::{FieldResult, Variables, EmptyMutation, LookAheadSelection, DefaultScalarValue};
 
+#[macro_use] extern crate dgraph;
+
 struct Query;
 
 struct Context;
 impl juniper::Context for Context {}
 
-struct Person {
-    name: String,
-    friends: Vec<Self>,
-    best_friend: Box<Self>,
-}
+struct Person;
 
-#[juniper::object]
+#[juniper::object (Context = Context)]
 impl Person {
-    fn name(&self) -> &str {
+    fn name(context: &Context) -> &str {
         &self.name
     }
 
@@ -29,31 +27,25 @@ impl Person {
     }
 }
 
-struct PersonDTO {
-    name: String,
-    friends: Vec<Self>,
-    best_friend: Box<Self>,
-}
-
 trait QueryConstructable {
     fn construct_query(selection: &LookAheadSelection<DefaultScalarValue>) -> String;
 }
 
 
 use juniper::LookAheadMethods;
+// write out inner query
 impl QueryConstructable for Person {
     fn construct_query(selection: &LookAheadSelection<DefaultScalarValue>) -> String {
         let unique_names: HashSet<&str> = selection.child_names().into_iter().collect();
-        let children_string = unique_names.iter().map(|field_name| {
+        unique_names.iter().map(|field_name| {
             match *field_name {
                 "name" => "name".to_owned(),
-                "friends" => Person::construct_query(selection.select_child(field_name).unwrap()),
-                "bestFriend" => Person::construct_query(selection.select_child(field_name).unwrap()),
+                "friends" => format!("friend {{\n{}\n}}", Person::construct_query(selection.select_child(field_name).unwrap())),
+                "bestFriend" => format!("bestFriend: friend @facets(orderdesc: score) (first: 1) {{\n{}\n}}", Person::construct_query(selection.select_child(field_name).unwrap())),
                 unknown_field => unreachable!("Unkown field {} on type Person, should be caught by juniper", unknown_field)
             }
         }).collect::<Vec<String>>()
-        .join("\n");
-        format!("{} {{\n{}\n}}", selection.field_name(), children_string)
+        .join("\n")
     }
 }
 // 1. Construct query from selection
@@ -61,22 +53,10 @@ impl QueryConstructable for Person {
 // 3. Store query result as json
 // 4. Resolve fields from result using context for current place, json
 
-fn perform_query(query: &str) -> &str {
-    unimplemented!()
-}
-
-fn parse_query_result(result: &str) -> PersonDTO {
-    unimplemented!()
-}
-
-fn transform_dto(person_dto: &PersonDTO) -> Person {
-    Person {
-        name: person_dto.name.clone(),
-        friends: person_dto.friends.iter().map( |p_dto| {
-            transform_dto(p_dto)
-        }).collect(),
-        best_friend: Box::new(transform_dto(&person_dto.best_friend)),
-    }
+fn perform_query(query: &str) -> String {
+    let client = make_dgraph!(dgraph::new_dgraph_client("localhost:9080"));
+    let response = client.new_readonly_txn().query(query).unwrap();
+    String::from_utf8(response.json).unwrap()
 }
 
 graphql_object!(Query: Context |&self| {
@@ -87,9 +67,11 @@ graphql_object!(Query: Context |&self| {
     field person (&executor) -> FieldResult<Person> {
         dbg!(executor.look_ahead());
         let query = Person::construct_query(&executor.look_ahead());
+        let query = format!("{{\ndave(func: anyofterms(name, \"Dave\")) {{\n{}\n}}\n}}", query);
         println!("QUERY:\n{}", query);
         let result = perform_query(&query);
-        let result = parse_query_result(result);
+        dbg!(&result);
+        let result = parse_query_result(&result);
         Ok(transform_dto(&result))
     }
 });
