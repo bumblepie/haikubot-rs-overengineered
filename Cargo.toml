@@ -1,0 +1,10 @@
+[package]
+name = "haikubot-rs-api"
+version = "0.1.0"
+authors = ["bumblepie <luke@bumblepie.space>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+juniper = "0.14.2"
