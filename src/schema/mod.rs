@@ -1,7 +1,8 @@
 mod person;
 use super::error::*;
-use juniper::{EmptyMutation, FieldError, FieldResult};
 pub use person::Person;
+
+use juniper::{EmptyMutation, FieldError, FieldResult};
 
 fn perform_query(query: &str) -> String {
     let client = make_dgraph!(dgraph::new_dgraph_client("localhost:9080"));
@@ -20,7 +21,11 @@ impl Query {
     fn person(executor: &Executor) -> FieldResult<Person> {
         let query = Person::generate_query(&executor.look_ahead());
         if query.is_err() {
-            eprintln!("{} {:?}", DB_QUERY_GENERATION_ERR, query.unwrap_err());
+            dbg!(error!(
+                "{} {:?}",
+                DB_QUERY_GENERATION_ERR,
+                query.unwrap_err()
+            ));
             return Err(FieldError::new(
                 "Unable to generate query",
                 graphql_value!({ INTERNAL_ERROR: DB_QUERY_GENERATION_ERR }),
