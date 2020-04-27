@@ -1,47 +1,63 @@
 mod person;
-use super::error::*;
+use super::error::{
+    DgraphQueryError, DB_QUERY_GENERATION_ERR, DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR,
+    UNABLE_TO_RESOLVE_FIELD,
+};
 pub use person::Person;
 
 use juniper::{EmptyMutation, FieldError, FieldResult};
 
-fn perform_query(query: &str) -> String {
-    let client = make_dgraph!(dgraph::new_dgraph_client("localhost:9080"));
-    let response = client.new_readonly_txn().query(query).unwrap();
-    String::from_utf8(response.json).unwrap()
+fn perform_query(
+    client: &dgraph::Dgraph,
+    query: &str,
+) -> Result<serde_json::Value, DgraphQueryError> {
+    let response = client.new_readonly_txn().query(query)?;
+    let response = String::from_utf8(response.json)?;
+    let response = serde_json::from_str::<serde_json::Value>(&response)?;
+    Ok(response)
 }
 
 pub struct Query;
+pub struct Context {
+    pub dgraph_client: dgraph::Dgraph,
+}
 
-#[juniper::object]
+impl juniper::Context for Context {}
+
+#[juniper::object (Context = Context)]
 impl Query {
     fn apiVersion() -> &str {
         "1.0"
     }
 
-    fn person(executor: &Executor) -> FieldResult<Person> {
+    fn person(context: &Context, executor: &Executor) -> FieldResult<Person> {
         let query = Person::generate_query(&executor.look_ahead());
-        if query.is_err() {
-            dbg!(error!(
-                "{} {:?}",
-                DB_QUERY_GENERATION_ERR,
-                query.unwrap_err()
-            ));
+        if let Err(err) = query {
+            error!("{} {:?}", DB_QUERY_GENERATION_ERR, err);
             return Err(FieldError::new(
-                "Unable to generate query",
+                UNABLE_TO_RESOLVE_FIELD,
                 graphql_value!({ INTERNAL_ERROR: DB_QUERY_GENERATION_ERR }),
             ));
         }
-        let query: String = query.ok().unwrap();
+        let query: String = query.unwrap();
         let query = format!(
             "{{\njames(func: anyofterms(name, \"James\")) {{\n{}\n}}\n}}",
             query
         );
-        let result = perform_query(&query);
-        Ok(Person {
-            result_json: serde_json::from_str::<serde_json::Value>(&result).unwrap()["james"][0]
-                .clone(),
-        })
+        let result = perform_query(&context.dgraph_client, &query);
+        match result {
+            Ok(result) => Ok(Person {
+                result_json: result["james"][0].clone(),
+            }),
+            Err(err) => {
+                error!("{} {:?}", DB_QUERY_RESULT_PARSE_ERR, err);
+                Err(FieldError::new(
+                    UNABLE_TO_RESOLVE_FIELD,
+                    graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
+                ))
+            }
+        }
     }
 }
 
-pub type Schema = juniper::RootNode<'static, Query, EmptyMutation<()>>;
+pub type Schema = juniper::RootNode<'static, Query, EmptyMutation<Context>>;

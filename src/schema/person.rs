@@ -1,4 +1,7 @@
-use super::super::error::*;
+use super::super::error::{
+    CompositeQueryCreationError, QueryCreationError, DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR,
+    UNABLE_TO_RESOLVE_FIELD,
+};
 use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadMethods, LookAheadSelection};
 
 #[derive(Debug)]
@@ -19,8 +22,8 @@ impl Person {
         }
     }
 
-    fn friends() -> FieldResult<Vec<Person>> {
-        match &self.result_json.get("friend") {
+    fn friends(&self) -> FieldResult<Vec<Person>> {
+        match self.result_json.get("friend") {
             Some(serde_json::Value::Array(friends)) => Ok(friends
                 .iter()
                 .map(|json| Person {
@@ -35,8 +38,8 @@ impl Person {
         }
     }
 
-    fn bestFriend() -> FieldResult<Option<Person>> {
-        let best_friend_array = match &self.result_json.get("bestFriend") {
+    fn bestFriend(&self) -> FieldResult<Option<Person>> {
+        let best_friend_array = match self.result_json.get("bestFriend") {
             Some(serde_json::Value::Array(json)) => json,
             _ => {
                 return Err(FieldError::new(
@@ -59,34 +62,34 @@ impl Person {
         let (query_sections, errs): (Vec<_>, Vec<_>) = selection
             .child_names()
             .iter()
-            .map(|field_name| match *field_name {
-                // "name" => Ok("name".to_owned()),
-                "friends" => Person::generate_query(selection.select_child(field_name).unwrap())
+            .map(|field_name| (field_name, selection.select_child(field_name).unwrap()))
+            .map(|(field_name, child_selection)| match *field_name {
+                "name" => Ok("name".to_owned()),
+                "friends" => Person::generate_query(child_selection)
                     .map(|inner_query| format!("friend {{\n{}\n}}", inner_query)),
-                "bestFriend" => Person::generate_query(selection.select_child(field_name).unwrap())
-                    .map(|inner_query| {
-                        format!(
-                            "bestFriend: friend @facets(orderdesc: score) (first: 1) {{\n{}\n}}",
-                            inner_query
-                        )
-                    }),
+                "bestFriend" => Person::generate_query(child_selection).map(|inner_query| {
+                    format!(
+                        "bestFriend: friend @facets(orderdesc: score) (first: 1) {{\n{}\n}}",
+                        inner_query
+                    )
+                }),
                 unknown_field => Err(QueryCreationError::UnknownField(unknown_field.to_owned())),
             })
             .partition(Result::is_ok);
-        if !errs.is_empty() {
+        if errs.is_empty() {
+            // Extract Vec<Result<String, QueryCreationError>> into Vec<String> and join
+            Ok(query_sections
+                .into_iter()
+                .map(Result::unwrap)
+                .collect::<Vec<String>>()
+                .join("\n"))
+        } else {
             // Extract Vec<Result<String, QueryCreationError>> into Vec<QueryCreationError>
             // Gather errors into composite error
             Err(QueryCreationError::Composite(CompositeQueryCreationError {
                 at_field: selection.field_name().to_owned(),
-                children: errs.into_iter().map(|result| result.unwrap_err()).collect(),
+                children: errs.into_iter().map(Result::unwrap_err).collect(),
             }))
-        } else {
-            // Extract Vec<Result<String, QueryCreationError>> into Vec<String> and join
-            Ok(query_sections
-                .into_iter()
-                .map(|result| result.ok().unwrap())
-                .collect::<Vec<String>>()
-                .join("\n"))
         }
     }
 }

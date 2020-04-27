@@ -1,6 +1,6 @@
 mod error;
 mod schema;
-use schema::{Query, Schema};
+use schema::{Context, Query, Schema};
 
 #[macro_use]
 extern crate juniper;
@@ -19,8 +19,15 @@ use actix_web::{middleware, web, App, Error, HttpResponse, HttpServer};
 use juniper::http::graphiql::graphiql_source;
 use juniper::http::GraphQLRequest;
 
+const PROTOCOL: &str = "http";
+const HOSTNAME: &str = "127.0.0.1";
+const PORT: u32 = 4000;
+
+const DGRAPH_HOSTNAME: &str = "127.0.0.1";
+const DGRAPH_PORT: u32 = 9080;
+
 async fn graphiql() -> HttpResponse {
-    let html = graphiql_source("http://127.0.0.1:4000/graphql");
+    let html = graphiql_source(&format!("{}://{}:{}/graphql", PROTOCOL, HOSTNAME, PORT));
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(html)
@@ -28,10 +35,11 @@ async fn graphiql() -> HttpResponse {
 
 async fn graphql(
     st: web::Data<Arc<Schema>>,
+    context: web::Data<Arc<Context>>,
     data: web::Json<GraphQLRequest>,
 ) -> Result<HttpResponse, Error> {
     let user = web::block(move || {
-        let res = data.execute(&st, &());
+        let res = data.execute(&st, &context);
         Ok::<_, serde_json::error::Error>(serde_json::to_string(&res)?)
     })
     .await?;
@@ -48,15 +56,24 @@ async fn main() -> io::Result<()> {
     // Create Juniper schema
     let schema = std::sync::Arc::new(Schema::new(Query, EmptyMutation::new()));
 
+    //Create Dgraph client
+    let context = std::sync::Arc::new(Context {
+        dgraph_client: make_dgraph!(dgraph::new_dgraph_client(&format!(
+            "{}:{}",
+            DGRAPH_HOSTNAME, DGRAPH_PORT
+        ))),
+    });
+
     // Start http server
     HttpServer::new(move || {
         App::new()
             .data(schema.clone())
+            .data(context.clone())
             .wrap(middleware::Logger::default())
             .service(web::resource("/graphql").route(web::post().to(graphql)))
             .service(web::resource("/graphiql").route(web::get().to(graphiql)))
     })
-    .bind("127.0.0.1:4000")?
+    .bind(format!("{}:{}", HOSTNAME, PORT))?
     .run()
     .await
 }

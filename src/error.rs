@@ -1,3 +1,6 @@
+use dgraph::DgraphError;
+use std::string::FromUtf8Error;
+
 #[derive(Debug)]
 pub enum QueryCreationError {
     Composite(CompositeQueryCreationError),
@@ -8,6 +11,31 @@ pub enum QueryCreationError {
 pub struct CompositeQueryCreationError {
     pub at_field: String,
     pub children: Vec<QueryCreationError>,
+}
+
+#[derive(Debug)]
+pub enum DgraphQueryError {
+    Dgraph(DgraphError),
+    InvalidUTF(FromUtf8Error),
+    InvalidJson(serde_json::Error),
+}
+
+impl std::convert::From<DgraphError> for DgraphQueryError {
+    fn from(err: DgraphError) -> DgraphQueryError {
+        DgraphQueryError::Dgraph(err)
+    }
+}
+
+impl std::convert::From<FromUtf8Error> for DgraphQueryError {
+    fn from(err: FromUtf8Error) -> DgraphQueryError {
+        DgraphQueryError::InvalidUTF(err)
+    }
+}
+
+impl std::convert::From<serde_json::Error> for DgraphQueryError {
+    fn from(err: serde_json::Error) -> DgraphQueryError {
+        DgraphQueryError::InvalidJson(err)
+    }
 }
 
 pub const INTERNAL_ERROR: &str = "internal_error";
