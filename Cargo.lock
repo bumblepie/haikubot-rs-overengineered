@@ -766,6 +766,7 @@ version = "0.1.0"
 dependencies = [
  "actix-rt",
  "actix-web",
+ "chrono",
  "dgraph",
  "env_logger",
  "juniper",
