@@ -5,8 +5,8 @@ mod haiku;
 mod util;
 
 use super::error::{
-    DgraphQueryError, DB_QUERY_GENERATION_ERR, DB_QUERY_RESULT_ERR, INTERNAL_ERROR,
-    UNABLE_TO_RESOLVE_FIELD,
+    DgraphQueryError, DB_QUERY_GENERATION_ERR, DB_QUERY_RESULT_ERR, DB_QUERY_RESULT_PARSE_ERR,
+    INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD,
 };
 use haiku::Haiku;
 use juniper::{EmptyMutation, FieldError, FieldResult};
@@ -48,17 +48,16 @@ impl Query {
         let query = format!("{{\nhaiku(func: type(Haiku)) {{\n{}\n}}\n}}", query);
         let result = perform_query(&context.dgraph_client, dbg!(&query));
         match dbg!(result) {
-            Ok(result) => Ok(Haiku {
-                result_json: result["haiku"][0].clone(),
-            }),
-            Err(err) => {
-                error!("{} - {:?}", DB_QUERY_RESULT_ERR, err);
-                Err(FieldError::new(
-                    UNABLE_TO_RESOLVE_FIELD,
-                    graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_ERR }),
-                ))
-            }
-        }
+            Ok(result) => match serde_json::from_value(result["haiku"][0].clone()) {
+                Ok(haiku) => return Ok(haiku),
+                Err(err) => error!("{} - {:?}", DB_QUERY_RESULT_PARSE_ERR, err),
+            },
+            Err(err) => error!("{} - {:?}", DB_QUERY_RESULT_ERR, err),
+        };
+        Err(FieldError::new(
+            UNABLE_TO_RESOLVE_FIELD,
+            graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_ERR }),
+        ))
     }
 }
 

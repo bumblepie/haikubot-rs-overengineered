@@ -1,114 +1,95 @@
-use super::super::error::{
-    QueryCreationError, DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD,
-};
+use super::super::error::{QueryCreationError, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD};
 use super::discord_channel::DiscordChannel;
 use super::discord_server::DiscordServer;
 use super::discord_user::DiscordUser;
 use super::util;
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, Utc};
 use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection, ID};
-#[derive(Debug)]
-pub struct Haiku {
-    pub result_json: serde_json::Value,
-}
 
-impl From<serde_json::Value> for Haiku {
-    fn from(result_json: serde_json::Value) -> Haiku {
-        Haiku { result_json }
-    }
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Haiku {
+    id: Option<String>,
+    authors: Option<Vec<DiscordUser>>,
+    content: Option<String>,
+    channel: Option<DiscordChannel>,
+    server_channel: Option<ServerChannel>,
+    rules_version: Option<i32>,
+    timestamp: Option<DateTime<Utc>>,
+}
+#[derive(Debug, Deserialize)]
+struct ServerChannel {
+    server: Option<DiscordServer>,
 }
 
 #[juniper::object]
 impl Haiku {
     fn id(&self) -> FieldResult<ID> {
-        match self.result_json.get("id") {
-            Some(serde_json::Value::String(id)) => Ok(ID::new(id)),
-            _ => Err(FieldError::new(
+        match self.id {
+            Some(ref id) => Ok(ID::new(id)),
+            None => Err(FieldError::new(
                 UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
+                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
             )),
         }
     }
 
-    fn authors(&self) -> FieldResult<Vec<DiscordUser>> {
-        match self.result_json.get("authors") {
-            Some(serde_json::Value::Array(authors)) => Ok(authors
-                .iter()
-                .map(|json| DiscordUser {
-                    result_json: json.clone(),
-                })
-                .collect()),
-            _ => Err(FieldError::new(
+    fn authors(&self) -> FieldResult<Vec<&DiscordUser>> {
+        match self.authors {
+            Some(ref authors) => Ok(authors.iter().collect()),
+            None => Err(FieldError::new(
                 UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
+                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
             )),
         }
     }
 
     fn content(&self) -> FieldResult<String> {
-        match self.result_json.get("content") {
-            Some(serde_json::Value::String(content)) => Ok(content.clone()),
-            _ => Err(FieldError::new(
+        self.content.clone().ok_or(FieldError::new(
+            UNABLE_TO_RESOLVE_FIELD,
+            graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
+        ))
+    }
+
+    fn channel(&self) -> FieldResult<&DiscordChannel> {
+        match self.channel {
+            Some(ref channel) => Ok(channel),
+            None => Err(FieldError::new(
                 UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
+                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
             )),
         }
     }
 
-    fn channel(&self) -> FieldResult<DiscordChannel> {
-        match self.result_json.get("channel") {
-            Some(json) => Ok(DiscordChannel {
-                result_json: json.clone(),
-            }),
-            _ => Err(FieldError::new(
+    fn server(&self) -> FieldResult<&DiscordServer> {
+        let server_channel = match self.server_channel {
+            Some(ref server_channel) => Ok(server_channel),
+            None => Err(FieldError::new(
                 UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
+                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
             )),
-        }
-    }
-
-    fn server(&self) -> FieldResult<DiscordServer> {
-        match self
-            .result_json
-            .get("server_channel")
-            .map(|channel_json| channel_json.get("server"))
-        {
-            Some(Some(json)) => Ok(DiscordServer {
-                result_json: json.clone(),
-            }),
-            _ => Err(FieldError::new(
+        }?;
+        match server_channel.server {
+            Some(ref server) => Ok(server),
+            None => Err(FieldError::new(
                 UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
+                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
             )),
         }
     }
 
     fn rulesVersion(&self) -> FieldResult<i32> {
-        if let Some(serde_json::Value::Number(version)) = self.result_json.get("rulesVersion") {
-            if let Some(version) = version.as_i64() {
-                return Ok(version as i32);
-            }
-        }
-        return Err(FieldError::new(
+        self.rules_version.ok_or(FieldError::new(
             UNABLE_TO_RESOLVE_FIELD,
-            graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
-        ));
+            graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
+        ))
     }
 
-    fn timestamp(&self) -> FieldResult<DateTime<FixedOffset>> {
-        match self.result_json.get("timestamp") {
-            Some(serde_json::Value::String(ts)) => DateTime::<FixedOffset>::parse_from_rfc3339(ts)
-                .map_err(|_| {
-                    FieldError::new(
-                        UNABLE_TO_RESOLVE_FIELD,
-                        graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
-                    )
-                }),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
-            )),
-        }
+    fn timestamp(&self) -> FieldResult<DateTime<Utc>> {
+        self.timestamp.ok_or(FieldError::new(
+            UNABLE_TO_RESOLVE_FIELD,
+            graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
+        ))
     }
 }
 
@@ -130,7 +111,7 @@ impl util::MapsToDgraphQuery for Haiku {
             )),
             "server" => Ok(format!(
                 r#"
-                server_channel: channel @filter(type(DiscordChannel)) {{
+                serverChannel: channel @filter(type(DiscordChannel)) {{
                     server @filter(type(DiscordServer)) {{
                         {}
                     }}
@@ -144,9 +125,9 @@ impl util::MapsToDgraphQuery for Haiku {
 
 #[cfg(test)]
 mod test {
-    use super::super::util;
     use super::*;
     use juniper::{EmptyMutation, RootNode, Variables};
+    use rstest::rstest;
 
     type Schema = RootNode<'static, Haiku, EmptyMutation<()>>;
 
@@ -162,7 +143,7 @@ mod test {
             "channel": {
                 "discordSnowflake": "0000000000000000002"
             },
-            "server_channel": {
+            "serverChannel": {
                 "server": {
                     "discordSnowflake": "0000000000000000003"
                 }
@@ -190,9 +171,7 @@ mod test {
             query,
             None,
             &Schema::new(
-                Haiku {
-                    result_json: haiku_json,
-                },
+                serde_json::from_value(haiku_json).unwrap(),
                 EmptyMutation::new(),
             ),
             &Variables::new(),
@@ -219,26 +198,16 @@ mod test {
         )
     }
 
-    #[test]
-    fn resolve_missing_fields() {
-        util::resolve_missing_field_error::<Haiku>(r#"query { id }"#, "id", ());
-        util::resolve_missing_field_error::<Haiku>(
-            r#"query { authors { discordSnowflake } }"#,
-            "authors",
-            (),
-        );
-        util::resolve_missing_field_error::<Haiku>(r#"query { content }"#, "content", ());
-        util::resolve_missing_field_error::<Haiku>(
-            r#"query { channel { discordSnowflake } }"#,
-            "channel",
-            (),
-        );
-        util::resolve_missing_field_error::<Haiku>(
-            r#"query { server { discordSnowflake } }"#,
-            "server",
-            (),
-        );
-        util::resolve_missing_field_error::<Haiku>(r#"query { rulesVersion }"#, "rulesVersion", ());
-        util::resolve_missing_field_error::<Haiku>(r#"query { timestamp }"#, "timestamp", ());
+    #[rstest(query, expected_result,
+        case("id", Err(vec!["id"])),
+        case(r#"authors { discordSnowflake }"#, Err(vec!["authors"])),
+        case("content", Err(vec!["content"])),
+        case(r#"channel { discordSnowflake }"#, Err(vec!["channel"])),
+        case(r#"server { discordSnowflake }"#, Err(vec!["server"])),
+        case("rulesVersion", Err(vec!["rulesVersion"])),
+        case("timestamp", Err(vec!["timestamp"])),
+    )]
+    fn resolve_missing_fields(query: &str, expected_result: Result<juniper::Value, Vec<&str>>) {
+        util::resolve_missing_field::<Haiku>(query, (), expected_result);
     }
 }

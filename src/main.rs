@@ -9,6 +9,8 @@ extern crate dgraph;
 #[macro_use]
 extern crate serde_json;
 #[macro_use]
+extern crate serde;
+#[macro_use]
 extern crate log;
 
 use actix_web::{middleware, web, App, Error, HttpResponse, HttpServer};

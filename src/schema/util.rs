@@ -1,6 +1,5 @@
 use super::super::error::{
-    CompositeQueryCreationError, QueryCreationError, DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR,
-    UNABLE_TO_RESOLVE_FIELD,
+    CompositeQueryCreationError, QueryCreationError, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD,
 };
 use juniper::{
     DefaultScalarValue, EmptyMutation, FieldError, GraphQLType, LookAheadMethods,
@@ -8,31 +7,45 @@ use juniper::{
 };
 use serde_json::json;
 
-/// Test that a FieldError is the result when the json returned by DGraph does not contain a field
 #[allow(dead_code)]
-pub fn resolve_missing_field_error<T>(query: &str, path: &str, context: <T as GraphQLType>::Context)
-where
-    T: From<serde_json::Value> + GraphQLType<TypeInfo = ()>,
+pub fn resolve_missing_field<T>(
+    query: &str,
+    context: <T as GraphQLType>::Context,
+    expected_result: Result<juniper::Value, Vec<&str>>,
+) where
+    T: serde::de::DeserializeOwned + GraphQLType<TypeInfo = ()>,
 {
+    let query = format!(r#"query {{ {} }}"#, query);
     let (result, errs) = juniper::execute(
-        query,
+        &query,
         None,
-        &RootNode::new(T::from(json!({})), EmptyMutation::new()),
+        &RootNode::new(
+            serde_json::from_value::<T>(json!({})).unwrap(),
+            EmptyMutation::new(),
+        ),
         &Variables::new(),
         &context,
     )
     .unwrap();
-    assert_eq!(result, juniper::Value::Null);
-    assert_eq!(errs.len(), 1);
-    let err = &errs[0];
-    assert_eq!(err.path(), &[path]);
-    assert_eq!(
-        err.error(),
-        &FieldError::new(
-            UNABLE_TO_RESOLVE_FIELD,
-            graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
-        )
-    );
+    match expected_result {
+        Ok(expected_val) => {
+            assert_eq!(result, expected_val);
+            assert_eq!(errs.len(), 0);
+        }
+        Err(error_path) => {
+            assert_eq!(result, juniper::Value::Null);
+            assert_eq!(errs.len(), 1);
+            let err = &errs[0];
+            assert_eq!(err.path(), &error_path[..]);
+            assert_eq!(
+                err.error(),
+                &FieldError::new(
+                    UNABLE_TO_RESOLVE_FIELD,
+                    graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
+                )
+            );
+        }
+    };
 }
 
 pub trait MapsToDgraphQuery {

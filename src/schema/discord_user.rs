@@ -1,46 +1,27 @@
-use super::super::error::{
-    QueryCreationError, DB_QUERY_RESULT_PARSE_ERR, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD,
-};
+use super::super::error::{QueryCreationError, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD};
 use super::haiku::Haiku;
 use super::util;
 use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection};
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiscordUser {
-    pub result_json: serde_json::Value,
-}
-
-impl From<serde_json::Value> for DiscordUser {
-    fn from(result_json: serde_json::Value) -> DiscordUser {
-        DiscordUser { result_json }
-    }
+    discord_snowflake: Option<String>,
+    #[serde(default)]
+    haikus: Vec<Haiku>,
 }
 
 #[juniper::object]
 impl DiscordUser {
     fn discordSnowflake(&self) -> FieldResult<String> {
-        match self.result_json.get("discordSnowflake") {
-            Some(serde_json::Value::String(id)) => Ok(id.clone()),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
-            )),
-        }
+        self.discord_snowflake.clone().ok_or(FieldError::new(
+            UNABLE_TO_RESOLVE_FIELD,
+            graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
+        ))
     }
 
-    fn haikus(&self) -> FieldResult<Vec<Haiku>> {
-        match self.result_json.get("haikus") {
-            Some(serde_json::Value::Array(haikus)) => Ok(haikus
-                .iter()
-                .map(|json| Haiku {
-                    result_json: json.clone(),
-                })
-                .collect()),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_PARSE_ERR }),
-            )),
-        }
+    fn haikus(&self) -> FieldResult<Vec<&Haiku>> {
+        Ok(self.haikus.iter().collect())
     }
 }
 
@@ -62,9 +43,9 @@ impl util::MapsToDgraphQuery for DiscordUser {
 
 #[cfg(test)]
 mod test {
-    use super::super::util;
     use super::*;
     use juniper::{EmptyMutation, RootNode, Variables};
+    use rstest::rstest;
 
     type Schema = RootNode<'static, DiscordUser, EmptyMutation<()>>;
 
@@ -88,9 +69,7 @@ mod test {
             query,
             None,
             &Schema::new(
-                DiscordUser {
-                    result_json: user_json,
-                },
+                serde_json::from_value(user_json).unwrap(),
                 EmptyMutation::new(),
             ),
             &Variables::new(),
@@ -108,17 +87,11 @@ mod test {
         )
     }
 
-    #[test]
-    fn resolve_missing_fields() {
-        util::resolve_missing_field_error::<DiscordUser>(
-            r#"query { discordSnowflake }"#,
-            "discordSnowflake",
-            (),
-        );
-        util::resolve_missing_field_error::<DiscordUser>(
-            r#"query { haikus { id } }"#,
-            "haikus",
-            (),
-        );
+    #[rstest(query, expected_result,
+        case("discordSnowflake", Err(vec!["discordSnowflake"])),
+        case(r#"haikus { id }"#, Ok(graphql_value!({"haikus": []}))),
+    )]
+    fn resolve_missing_fields(query: &str, expected_result: Result<juniper::Value, Vec<&str>>) {
+        util::resolve_missing_field::<DiscordUser>(query, (), expected_result);
     }
 }
