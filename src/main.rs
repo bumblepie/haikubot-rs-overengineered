@@ -12,6 +12,9 @@ extern crate serde_json;
 extern crate serde;
 #[macro_use]
 extern crate log;
+extern crate regex;
+#[macro_use]
+extern crate lazy_static;
 
 use actix_web::{middleware, web, App, Error, HttpResponse, HttpServer};
 use juniper::http::graphiql::graphiql_source;
