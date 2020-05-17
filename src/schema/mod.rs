@@ -1,8 +1,9 @@
+#[macro_use]
+mod util;
 mod discord_channel;
 mod discord_server;
 mod discord_user;
 mod haiku;
-mod util;
 
 use super::error::{
     DgraphQueryError, DB_QUERY_GENERATION_ERR, DB_QUERY_RESULT_ERR, DB_QUERY_RESULT_PARSE_ERR,

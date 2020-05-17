@@ -76,3 +76,19 @@ pub trait MapsToDgraphQuery {
         }
     }
 }
+
+#[macro_export]
+macro_rules! hash {
+    ( $( $x:expr ),* ) => {
+        {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            
+            let mut temp_hasher = DefaultHasher::new();
+            $(
+                $x.hash(&mut temp_hasher);
+            )*
+            temp_hasher.finish()
+        }
+    };
+}

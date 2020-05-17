@@ -6,8 +6,6 @@ use juniper::{
     LookAheadValue,
 };
 use regex::Regex;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 #[derive(Debug)]
 pub struct DiscordUser {
@@ -47,7 +45,7 @@ impl DiscordUser {
     }
 
     fn haikus_search(&self, search_term: String, max: i32) -> FieldResult<Vec<Haiku>> {
-        let alias = Self::haikus_search_alias(&search_term, &max);
+        let alias = format!("haikusSearch_{:#x}", hash!(&search_term, &max));
         match self.inner.get(&alias) {
             Some(serde_json::Value::Array(haikus)) => Ok(haikus
                 .iter()
@@ -59,15 +57,6 @@ impl DiscordUser {
                 graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
             )),
         }
-    }
-}
-
-impl DiscordUser {
-    fn haikus_search_alias(search_term: &str, max: &i32) -> String {
-        let mut hasher = DefaultHasher::new();
-        search_term.hash(&mut hasher);
-        max.hash(&mut hasher);
-        format!("haikusSearch_{:#x}", hasher.finish())
     }
 }
 
@@ -103,7 +92,7 @@ impl util::MapsToDgraphQuery for DiscordUser {
 
                 Ok(format!(
                     r#"{}: ~author @filter(type(Haiku) AND anyofterms(content, "{}")) (first: {}) {{ {} }}"#,
-                    DiscordUser::haikus_search_alias(&search_term, max),
+                    format!("haikusSearch_{:#x}", hash!(&search_term, &max)),
                     search_term,
                     max,
                     Haiku::generate_inner_query(child_selection)?
@@ -142,8 +131,11 @@ mod test {
                 "id": "1",
                 "id": "2"
             }],
-            DiscordUser::haikus_search_alias("a", &2): [{
+            format!("haikusSearch_{:#x}", hash!("a", &2)): [{
                 "id": "1"
+            }],
+            format!("haikusSearch_{:#x}", hash!("b", &2)): [{
+                "id": "2"
             }],
         });
         let query = r#"
@@ -153,6 +145,9 @@ mod test {
                 id
             }
             haikusSearch(searchTerm: "a", max: 2) {
+                id
+            }
+            secondSearch: haikusSearch(searchTerm: "b", max: 2) {
                 id
             }
         }"#;
@@ -174,6 +169,9 @@ mod test {
                 }],
                 "haikusSearch": [{
                     "id": "1",
+                }],
+                "secondSearch": [{
+                    "id": "2",
                 }],
             })
         )
