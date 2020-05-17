@@ -1,9 +1,7 @@
-use super::super::error::{
-    CompositeQueryCreationError, QueryCreationError, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD,
-};
+use super::super::error::{internal_error, CompositeQueryCreationError, QueryCreationError};
 use juniper::{
-    DefaultScalarValue, EmptyMutation, FieldError, GraphQLType, LookAheadMethods,
-    LookAheadSelection, RootNode, Variables,
+    DefaultScalarValue, EmptyMutation, GraphQLType, LookAheadMethods, LookAheadSelection, RootNode,
+    Variables,
 };
 use serde_json::json;
 
@@ -34,13 +32,7 @@ pub fn resolve_missing_field<T>(
             assert_eq!(errs.len(), 1);
             let err = &errs[0];
             assert_eq!(err.path(), &error_path[..]);
-            assert_eq!(
-                err.error(),
-                &FieldError::new(
-                    UNABLE_TO_RESOLVE_FIELD,
-                    graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-                )
-            );
+            assert_eq!(err.error(), &internal_error());
         }
     };
 }
@@ -83,7 +75,7 @@ macro_rules! hash {
         {
             use std::collections::hash_map::DefaultHasher;
             use std::hash::{Hash, Hasher};
-            
+
             let mut temp_hasher = DefaultHasher::new();
             $(
                 $x.hash(&mut temp_hasher);

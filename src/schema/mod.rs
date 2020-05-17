@@ -5,12 +5,9 @@ mod discord_server;
 mod discord_user;
 mod haiku;
 
-use super::error::{
-    DgraphQueryError, DB_QUERY_GENERATION_ERR, DB_QUERY_RESULT_ERR, DB_QUERY_RESULT_PARSE_ERR,
-    INTERNAL_ERROR, INVALID_INPUT, UNABLE_TO_RESOLVE_FIELD,
-};
-use haiku::{is_valid_haiku_id, Haiku};
-use juniper::{EmptyMutation, FieldError, FieldResult};
+use super::error::{internal_error, DgraphQueryError};
+use haiku::{valid_haiku_id, Haiku};
+use juniper::{EmptyMutation, FieldResult};
 use std::collections::HashMap;
 use util::MapsToDgraphQuery;
 
@@ -43,22 +40,8 @@ impl Query {
         executor: &Executor,
         haiku_id: String,
     ) -> FieldResult<Option<Haiku>> {
-        if !is_valid_haiku_id(&haiku_id) {
-            return Err(FieldError::new(
-                INVALID_INPUT,
-                graphql_value!({ INVALID_INPUT: INVALID_INPUT }),
-            ));
-        }
-
-        let query = Haiku::generate_inner_query(&executor.look_ahead());
-        if let Err(err) = query {
-            error!("{} {:?}", DB_QUERY_GENERATION_ERR, err);
-            return Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: DB_QUERY_GENERATION_ERR }),
-            ));
-        }
-        let query: String = query.unwrap();
+        let haiku_id = valid_haiku_id(haiku_id)?;
+        let query = Haiku::generate_inner_query(&executor.look_ahead())?;
         let query = format!(
             r#"
 query haiku($id: string){{
@@ -80,15 +63,12 @@ query haiku($id: string){{
                         return Ok(None);
                     }
                 } else {
-                    error!("{} - TODO err msg", DB_QUERY_RESULT_PARSE_ERR);
+                    error!("Error parsing Dgraph Query result - malformed response");
                 }
             }
-            Err(err) => error!("{} - {:?}", DB_QUERY_RESULT_ERR, err),
+            Err(err) => error!("Dgraph error - {:?}", err),
         };
-        Err(FieldError::new(
-            UNABLE_TO_RESOLVE_FIELD,
-            graphql_value!({ INTERNAL_ERROR: DB_QUERY_RESULT_ERR }),
-        ))
+        Err(internal_error())
     }
 }
 

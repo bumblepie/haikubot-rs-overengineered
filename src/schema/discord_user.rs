@@ -1,9 +1,8 @@
-use super::super::error::{QueryCreationError, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD};
+use super::super::error::{internal_error, QueryCreationError};
 use super::haiku::Haiku;
 use super::util;
 use juniper::{
-    DefaultScalarValue, FieldError, FieldResult, LookAheadMethods, LookAheadSelection,
-    LookAheadValue,
+    DefaultScalarValue, FieldResult, LookAheadMethods, LookAheadSelection, LookAheadValue,
 };
 use regex::Regex;
 
@@ -23,10 +22,7 @@ impl DiscordUser {
     fn discordSnowflake(&self) -> FieldResult<String> {
         match self.inner.get("discordSnowflake") {
             Some(serde_json::Value::String(snowflake)) => Ok(snowflake.clone()),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-            )),
+            _ => Err(internal_error()),
         }
     }
 
@@ -37,10 +33,7 @@ impl DiscordUser {
                 .map(|json| Haiku::from(json.clone()))
                 .collect()),
             None => Ok(Vec::new()),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-            )),
+            _ => Err(internal_error()),
         }
     }
 
@@ -52,10 +45,7 @@ impl DiscordUser {
                 .map(|json| Haiku::from(json.clone()))
                 .collect()),
             None => Ok(Vec::new()),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-            )),
+            _ => Err(internal_error()),
         }
     }
 }
@@ -76,18 +66,23 @@ impl util::MapsToDgraphQuery for DiscordUser {
                     .ok_or(QueryCreationError::MissingArgument("searchTerm".to_owned()))?;
                 let search_term = match search_term.value() {
                     LookAheadValue::Scalar(DefaultScalarValue::String(term)) => Ok(term),
-                    _ => Err(QueryCreationError::InvalidArgument("searchTerm".to_owned())),
+                    _ => Err(QueryCreationError::InvalidArgument(
+                        "searchTerm".to_owned(),
+                        "must be a string".to_owned(),
+                    )),
                 }?
                 .clone();
-                let search_term = valid_search_terms(search_term)
-                    .map_err(|_| QueryCreationError::InvalidArgument("searchTerm".to_owned()))?;
+                let search_term = valid_search_terms(search_term)?;
 
                 let max = child_selection
                     .argument("max")
                     .ok_or(QueryCreationError::MissingArgument("max".to_owned()))?;
                 let max = match max.value() {
                     LookAheadValue::Scalar(DefaultScalarValue::Int(max)) => Ok(max),
-                    _ => Err(QueryCreationError::InvalidArgument("max".to_owned())),
+                    _ => Err(QueryCreationError::InvalidArgument(
+                        "max".to_owned(),
+                        "must be an integer".to_owned(),
+                    )),
                 }?;
 
                 Ok(format!(
@@ -103,7 +98,7 @@ impl util::MapsToDgraphQuery for DiscordUser {
     }
 }
 
-fn valid_search_terms(terms: String) -> Result<String, ()> {
+fn valid_search_terms(terms: String) -> Result<String, QueryCreationError> {
     lazy_static! {
         static ref SEARCH_TERM_REGEX: Regex =
             Regex::new(r"^([[:alpha:]]+ )*[[:alpha:]]+$").unwrap();
@@ -111,7 +106,11 @@ fn valid_search_terms(terms: String) -> Result<String, ()> {
     if SEARCH_TERM_REGEX.is_match(&terms) {
         Ok(terms)
     } else {
-        Err(())
+        Err(QueryCreationError::InvalidArgument(
+            "searchTerm".to_owned(),
+            "must be a set of words made up of only alphabetic characters separated by spaces"
+                .to_owned(),
+        ))
     }
 }
 

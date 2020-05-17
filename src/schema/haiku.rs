@@ -1,4 +1,4 @@
-use super::super::error::{QueryCreationError, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD};
+use super::super::error::{internal_error, invalid_input, QueryCreationError};
 use super::discord_channel::DiscordChannel;
 use super::discord_server::DiscordServer;
 use super::discord_user::DiscordUser;
@@ -23,10 +23,7 @@ impl Haiku {
     fn id(&self) -> FieldResult<String> {
         match self.inner.get("id") {
             Some(serde_json::Value::String(id)) => Ok(id.clone()),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-            )),
+            _ => Err(internal_error()),
         }
     }
 
@@ -36,30 +33,21 @@ impl Haiku {
                 .iter()
                 .map(|json| DiscordUser::from(json.clone()))
                 .collect()),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-            )),
+            _ => Err(internal_error()),
         }
     }
 
     fn content(&self) -> FieldResult<String> {
         match self.inner.get("content") {
             Some(serde_json::Value::String(content)) => Ok(content.clone()),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-            )),
+            _ => Err(internal_error()),
         }
     }
 
     fn channel(&self) -> FieldResult<DiscordChannel> {
         match self.inner.get("channel") {
             Some(json) => Ok(DiscordChannel::from(json.clone())),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-            )),
+            _ => Err(internal_error()),
         }
     }
 
@@ -70,10 +58,7 @@ impl Haiku {
             .map(|channel_json| channel_json.get("server"))
         {
             Some(Some(json)) => Ok(DiscordServer::from(json.clone())),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-            )),
+            _ => Err(internal_error()),
         }
     }
 
@@ -83,25 +68,16 @@ impl Haiku {
                 return Ok(version as i32);
             }
         }
-        return Err(FieldError::new(
-            UNABLE_TO_RESOLVE_FIELD,
-            graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-        ));
+        return Err(internal_error());
     }
 
     fn timestamp(&self) -> FieldResult<DateTime<Utc>> {
         match self.inner.get("timestamp") {
             Some(timestamp) => serde_json::from_value(timestamp.clone()).map_err(|err| {
                 error!("Error deserializing timestamp");
-                FieldError::new(
-                    UNABLE_TO_RESOLVE_FIELD,
-                    graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-                )
+                internal_error()
             }),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-            )),
+            _ => Err(internal_error()),
         }
     }
 }
@@ -135,11 +111,17 @@ impl util::MapsToDgraphQuery for Haiku {
     }
 }
 
-pub fn is_valid_haiku_id(id: &str) -> bool {
+pub fn valid_haiku_id(id: String) -> Result<String, FieldError> {
     lazy_static! {
         static ref HAIKU_ID_REGEX: Regex = Regex::new(r"^0x\d+$").unwrap();
     }
-    HAIKU_ID_REGEX.is_match(&id)
+    if HAIKU_ID_REGEX.is_match(&id) {
+        Ok(id)
+    } else {
+        Err(invalid_input(
+            r#"Invalid haiku id: must be of the form "0x<ID>""#,
+        ))
+    }
 }
 
 #[cfg(test)]

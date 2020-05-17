@@ -1,8 +1,8 @@
-use super::super::error::{QueryCreationError, INTERNAL_ERROR, UNABLE_TO_RESOLVE_FIELD};
+use super::super::error::{internal_error, QueryCreationError};
 use super::discord_channel::DiscordChannel;
 use super::haiku::Haiku;
 use super::util;
-use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadMethods, LookAheadSelection};
+use juniper::{DefaultScalarValue, FieldResult, LookAheadMethods, LookAheadSelection};
 
 #[derive(Debug)]
 pub struct DiscordServer {
@@ -20,10 +20,7 @@ impl DiscordServer {
     fn discordSnowflake(&self) -> FieldResult<String> {
         match self.inner.get("discordSnowflake") {
             Some(serde_json::Value::String(snowflake)) => Ok(snowflake.clone()),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-            )),
+            _ => Err(internal_error()),
         }
     }
 
@@ -34,10 +31,7 @@ impl DiscordServer {
                 .map(|json| DiscordChannel::from(json.clone()))
                 .collect()),
             None => Ok(Vec::new()),
-            _ => Err(FieldError::new(
-                UNABLE_TO_RESOLVE_FIELD,
-                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-            )),
+            _ => Err(internal_error()),
         }
     }
 
