@@ -47,7 +47,6 @@ pub fn resolve_missing_field<T>(
 
 pub trait MapsToDgraphQuery {
     fn generate_inner_query_for_field(
-        field_name: &str,
         child_selection: &LookAheadSelection<DefaultScalarValue>,
     ) -> Result<String, QueryCreationError>;
 
@@ -57,9 +56,9 @@ pub trait MapsToDgraphQuery {
         let (query_sections, errs): (Vec<_>, Vec<_>) = selection
             .child_names()
             .iter()
-            .map(|field_name| (field_name, selection.select_child(field_name).unwrap()))
-            .map(|(&field_name, child_selection)| {
-                Self::generate_inner_query_for_field(field_name, child_selection)
+            .map(|field_name| selection.select_child(field_name).unwrap())
+            .map(|child_selection| {
+                Self::generate_inner_query_for_field(child_selection)
             })
             .partition(Result::is_ok);
         if errs.is_empty() {

@@ -74,10 +74,9 @@ impl DiscordUser {
 
 impl util::MapsToDgraphQuery for DiscordUser {
     fn generate_inner_query_for_field(
-        field_name: &str,
         child_selection: &LookAheadSelection<DefaultScalarValue>,
     ) -> Result<String, QueryCreationError> {
-        match field_name {
+        match child_selection.field_name() {
             "discordSnowflake" => Ok("discordSnowflake".to_owned()),
             "haikus" => Ok(format!(
                 "haikus: ~author @filter(type(Haiku)) {{ {} }}",

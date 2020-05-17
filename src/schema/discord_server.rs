@@ -2,7 +2,7 @@ use super::super::error::{QueryCreationError, INTERNAL_ERROR, UNABLE_TO_RESOLVE_
 use super::discord_channel::DiscordChannel;
 use super::haiku::Haiku;
 use super::util;
-use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection};
+use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection, LookAheadMethods};
 
 #[derive(Debug)]
 pub struct DiscordServer {
@@ -61,10 +61,9 @@ impl DiscordServer {
 
 impl util::MapsToDgraphQuery for DiscordServer {
     fn generate_inner_query_for_field(
-        field_name: &str,
         child_selection: &LookAheadSelection<DefaultScalarValue>,
     ) -> Result<String, QueryCreationError> {
-        match field_name {
+        match child_selection.field_name() {
             "discordSnowflake" => Ok("discordSnowflake".to_owned()),
             "channels" => Ok(format!(
                 "channels: ~server @filter(type(DiscordChannel)) {{ {} }}",

@@ -4,7 +4,7 @@ use super::discord_server::DiscordServer;
 use super::discord_user::DiscordUser;
 use super::util;
 use chrono::{DateTime, Utc};
-use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection};
+use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection, LookAheadMethods};
 use regex::Regex;
 
 #[derive(Debug)]
@@ -108,10 +108,9 @@ impl Haiku {
 
 impl util::MapsToDgraphQuery for Haiku {
     fn generate_inner_query_for_field(
-        field_name: &str,
         child_selection: &LookAheadSelection<DefaultScalarValue>,
     ) -> Result<String, QueryCreationError> {
-        match field_name {
+        match child_selection.field_name() {
             "id" => Ok("id: uid".to_owned()),
             "authors" => Ok(format!(
                 "authors: author @filter(type(DiscordUser)) {{ {} }}",
