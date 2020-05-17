@@ -5,7 +5,8 @@ use std::string::FromUtf8Error;
 pub enum QueryCreationError {
     Composite(CompositeQueryCreationError),
     UnknownField(String),
-    BadArgument(String),
+    MissingArgument(String),
+    InvalidArgument(String),
 }
 
 #[derive(Debug)]

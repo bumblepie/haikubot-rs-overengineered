@@ -7,7 +7,6 @@ use juniper::{
 };
 use regex::Regex;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug)]
@@ -83,21 +82,23 @@ impl util::MapsToDgraphQuery for DiscordUser {
                 Haiku::generate_inner_query(child_selection)?
             )),
             "haikusSearch" => {
-                let args: HashMap<_, _> = child_selection
-                    .arguments()
-                    .iter()
-                    .map(|arg| (arg.name(), arg.value()))
-                    .collect();
-                let search_term = match args.get("searchTerm") {
-                    Some(LookAheadValue::Scalar(DefaultScalarValue::String(term))) => Ok(term),
-                    _ => Err(QueryCreationError::BadArgument("searchTerm".to_owned())),
+                let search_term = child_selection
+                    .argument("searchTerm")
+                    .ok_or(QueryCreationError::MissingArgument("searchTerm".to_owned()))?;
+                let search_term = match search_term.value() {
+                    LookAheadValue::Scalar(DefaultScalarValue::String(term)) => Ok(term),
+                    _ => Err(QueryCreationError::InvalidArgument("searchTerm".to_owned())),
                 }?
                 .clone();
                 let search_term = valid_search_terms(search_term)
-                    .map_err(|_| QueryCreationError::BadArgument("searchTerm".to_owned()))?;
-                let max = match args.get("max") {
-                    Some(LookAheadValue::Scalar(DefaultScalarValue::Int(max))) => Ok(max),
-                    _ => Err(QueryCreationError::BadArgument("max".to_owned())),
+                    .map_err(|_| QueryCreationError::InvalidArgument("searchTerm".to_owned()))?;
+
+                let max = child_selection
+                    .argument("max")
+                    .ok_or(QueryCreationError::MissingArgument("max".to_owned()))?;
+                let max = match max.value() {
+                    LookAheadValue::Scalar(DefaultScalarValue::Int(max)) => Ok(max),
+                    _ => Err(QueryCreationError::InvalidArgument("max".to_owned())),
                 }?;
 
                 Ok(format!(

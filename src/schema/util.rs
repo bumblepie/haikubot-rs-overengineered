@@ -57,9 +57,7 @@ pub trait MapsToDgraphQuery {
             .child_names()
             .iter()
             .map(|field_name| selection.select_child(field_name).unwrap())
-            .map(|child_selection| {
-                Self::generate_inner_query_for_field(child_selection)
-            })
+            .map(|child_selection| Self::generate_inner_query_for_field(child_selection))
             .partition(Result::is_ok);
         if errs.is_empty() {
             // Extract Vec<Result<String, QueryCreationError>> into Vec<String> and join

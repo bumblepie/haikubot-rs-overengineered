@@ -2,7 +2,7 @@ use super::super::error::{QueryCreationError, INTERNAL_ERROR, UNABLE_TO_RESOLVE_
 use super::discord_server::DiscordServer;
 use super::haiku::Haiku;
 use super::util;
-use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection, LookAheadMethods};
+use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadMethods, LookAheadSelection};
 
 #[derive(Debug)]
 pub struct DiscordChannel {

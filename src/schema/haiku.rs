@@ -4,7 +4,7 @@ use super::discord_server::DiscordServer;
 use super::discord_user::DiscordUser;
 use super::util;
 use chrono::{DateTime, Utc};
-use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection, LookAheadMethods};
+use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadMethods, LookAheadSelection};
 use regex::Regex;
 
 #[derive(Debug)]
