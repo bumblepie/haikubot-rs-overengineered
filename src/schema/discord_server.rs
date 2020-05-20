@@ -4,40 +4,58 @@ use super::haiku::Haiku;
 use super::util;
 use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection};
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 pub struct DiscordServer {
-    discord_snowflake: Option<String>,
-    #[serde(default)]
-    channels: Vec<DiscordChannel>,
-    #[serde(default)]
-    haiku_channels: Vec<HaikuChannel>,
+    inner: serde_json::Value,
 }
-#[derive(Debug, Deserialize)]
-struct HaikuChannel {
-    #[serde(default)]
-    haikus: Vec<Haiku>,
+
+impl From<serde_json::Value> for DiscordServer {
+    fn from(inner: serde_json::Value) -> Self {
+        Self { inner }
+    }
 }
 
 #[juniper::object]
 impl DiscordServer {
     fn discordSnowflake(&self) -> FieldResult<String> {
-        self.discord_snowflake.clone().ok_or(FieldError::new(
-            UNABLE_TO_RESOLVE_FIELD,
-            graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-        ))
+        match self.inner.get("discordSnowflake") {
+            Some(serde_json::Value::String(snowflake)) => Ok(snowflake.clone()),
+            _ => Err(FieldError::new(
+                UNABLE_TO_RESOLVE_FIELD,
+                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
+            )),
+        }
     }
 
-    fn channels(&self) -> FieldResult<Vec<&DiscordChannel>> {
-        Ok(self.channels.iter().collect())
+    fn channels(&self) -> FieldResult<Vec<DiscordChannel>> {
+        match self.inner.get("channels") {
+            Some(serde_json::Value::Array(channels)) => Ok(channels
+                .iter()
+                .map(|json| DiscordChannel::from(json.clone()))
+                .collect()),
+            None => Ok(Vec::new()),
+            _ => Err(FieldError::new(
+                UNABLE_TO_RESOLVE_FIELD,
+                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
+            )),
+        }
     }
 
-    fn haikus(&self) -> FieldResult<Vec<&Haiku>> {
-        Ok(self
-            .haiku_channels
-            .iter()
-            .flat_map(|channel| channel.haikus.iter())
-            .collect())
+    fn haikus(&self) -> FieldResult<Vec<Haiku>> {
+        if let Some(serde_json::Value::Array(channels)) = self.inner.get("haikuChannels") {
+            Ok(channels
+                .iter()
+                .flat_map(|channel_json| match channel_json.get("haikus") {
+                    Some(serde_json::Value::Array(haikus)) => haikus
+                        .iter()
+                        .map(|json| Haiku::from(json.clone()))
+                        .collect::<Vec<Haiku>>(),
+                    _ => vec![],
+                })
+                .collect::<Vec<Haiku>>())
+        } else {
+            Ok(vec![])
+        }
     }
 }
 
@@ -103,10 +121,7 @@ mod test {
         let (result, _errs) = juniper::execute(
             query,
             None,
-            &Schema::new(
-                serde_json::from_value(server_json).unwrap(),
-                EmptyMutation::new(),
-            ),
+            &Schema::new(DiscordServer::from(server_json), EmptyMutation::new()),
             &Variables::new(),
             &(),
         )

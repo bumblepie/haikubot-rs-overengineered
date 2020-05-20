@@ -4,36 +4,51 @@ use super::haiku::Haiku;
 use super::util;
 use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection};
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 pub struct DiscordChannel {
-    discord_snowflake: Option<String>,
-    server: Option<DiscordServer>,
-    #[serde(default)]
-    haikus: Vec<Haiku>,
+    inner: serde_json::Value,
+}
+
+impl From<serde_json::Value> for DiscordChannel {
+    fn from(inner: serde_json::Value) -> Self {
+        Self { inner }
+    }
 }
 
 #[juniper::object]
 impl DiscordChannel {
     fn discordSnowflake(&self) -> FieldResult<String> {
-        self.discord_snowflake.clone().ok_or(FieldError::new(
-            UNABLE_TO_RESOLVE_FIELD,
-            graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-        ))
-    }
-
-    fn server(&self) -> FieldResult<&DiscordServer> {
-        match self.server {
-            Some(ref server) => Ok(server),
-            None => Err(FieldError::new(
+        match self.inner.get("discordSnowflake") {
+            Some(serde_json::Value::String(snowflake)) => Ok(snowflake.clone()),
+            _ => Err(FieldError::new(
                 UNABLE_TO_RESOLVE_FIELD,
                 graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
             )),
         }
     }
 
-    fn haikus(&self) -> FieldResult<Vec<&Haiku>> {
-        Ok(self.haikus.iter().collect())
+    fn server(&self) -> FieldResult<DiscordServer> {
+        match self.inner.get("server") {
+            Some(server) => Ok(DiscordServer::from(server.clone())),
+            _ => Err(FieldError::new(
+                UNABLE_TO_RESOLVE_FIELD,
+                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
+            )),
+        }
+    }
+
+    fn haikus(&self) -> FieldResult<Vec<Haiku>> {
+        match self.inner.get("haikus") {
+            Some(serde_json::Value::Array(haikus)) => Ok(haikus
+                .iter()
+                .map(|json| Haiku::from(json.clone()))
+                .collect()),
+            None => Ok(Vec::new()),
+            _ => Err(FieldError::new(
+                UNABLE_TO_RESOLVE_FIELD,
+                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
+            )),
+        }
     }
 }
 
@@ -90,10 +105,7 @@ mod test {
         let (result, _errs) = juniper::execute(
             query,
             None,
-            &Schema::new(
-                serde_json::from_value::<DiscordChannel>(channel_json).unwrap(),
-                EmptyMutation::new(),
-            ),
+            &Schema::new(DiscordChannel::from(channel_json), EmptyMutation::new()),
             &Variables::new(),
             &(),
         )

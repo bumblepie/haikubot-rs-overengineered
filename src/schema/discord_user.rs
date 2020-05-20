@@ -3,25 +3,41 @@ use super::haiku::Haiku;
 use super::util;
 use juniper::{DefaultScalarValue, FieldError, FieldResult, LookAheadSelection};
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 pub struct DiscordUser {
-    discord_snowflake: Option<String>,
-    #[serde(default)]
-    haikus: Vec<Haiku>,
+    inner: serde_json::Value,
+}
+
+impl From<serde_json::Value> for DiscordUser {
+    fn from(inner: serde_json::Value) -> Self {
+        Self { inner }
+    }
 }
 
 #[juniper::object]
 impl DiscordUser {
     fn discordSnowflake(&self) -> FieldResult<String> {
-        self.discord_snowflake.clone().ok_or(FieldError::new(
-            UNABLE_TO_RESOLVE_FIELD,
-            graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
-        ))
+        match self.inner.get("discordSnowflake") {
+            Some(serde_json::Value::String(snowflake)) => Ok(snowflake.clone()),
+            _ => Err(FieldError::new(
+                UNABLE_TO_RESOLVE_FIELD,
+                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
+            )),
+        }
     }
 
-    fn haikus(&self) -> FieldResult<Vec<&Haiku>> {
-        Ok(self.haikus.iter().collect())
+    fn haikus(&self) -> FieldResult<Vec<Haiku>> {
+        match self.inner.get("haikus") {
+            Some(serde_json::Value::Array(haikus)) => Ok(haikus
+                .iter()
+                .map(|json| Haiku::from(json.clone()))
+                .collect()),
+            None => Ok(Vec::new()),
+            _ => Err(FieldError::new(
+                UNABLE_TO_RESOLVE_FIELD,
+                graphql_value!({ INTERNAL_ERROR: INTERNAL_ERROR }),
+            )),
+        }
     }
 }
 
@@ -68,10 +84,7 @@ mod test {
         let (result, _errs) = juniper::execute(
             query,
             None,
-            &Schema::new(
-                serde_json::from_value(user_json).unwrap(),
-                EmptyMutation::new(),
-            ),
+            &Schema::new(DiscordUser::from(user_json), EmptyMutation::new()),
             &Variables::new(),
             &(),
         )

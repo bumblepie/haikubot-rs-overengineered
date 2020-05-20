@@ -13,16 +13,13 @@ pub fn resolve_missing_field<T>(
     context: <T as GraphQLType>::Context,
     expected_result: Result<juniper::Value, Vec<&str>>,
 ) where
-    T: serde::de::DeserializeOwned + GraphQLType<TypeInfo = ()>,
+    T: From<serde_json::Value> + GraphQLType<TypeInfo = ()>,
 {
     let query = format!(r#"query {{ {} }}"#, query);
     let (result, errs) = juniper::execute(
         &query,
         None,
-        &RootNode::new(
-            serde_json::from_value::<T>(json!({})).unwrap(),
-            EmptyMutation::new(),
-        ),
+        &RootNode::new(T::from(json!({})), EmptyMutation::new()),
         &Variables::new(),
         &context,
     )

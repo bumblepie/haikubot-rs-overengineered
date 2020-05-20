@@ -2,15 +2,13 @@ mod discord_channel;
 mod discord_server;
 mod discord_user;
 mod haiku;
-mod haiku_id_input;
 mod util;
 
 use super::error::{
     DgraphQueryError, DB_QUERY_GENERATION_ERR, DB_QUERY_RESULT_ERR, DB_QUERY_RESULT_PARSE_ERR,
     INTERNAL_ERROR, INVALID_INPUT, UNABLE_TO_RESOLVE_FIELD,
 };
-use haiku::Haiku;
-use haiku_id_input::is_valid_haiku_id;
+use haiku::{is_valid_haiku_id, Haiku};
 use juniper::{EmptyMutation, FieldError, FieldResult};
 use std::collections::HashMap;
 use util::MapsToDgraphQuery;
@@ -71,12 +69,19 @@ query haiku($id: string){{
         );
         let mut vars = HashMap::new();
         vars.insert("$id".to_string(), haiku_id);
-        let result = perform_query(&context.dgraph_client, &query, vars);
+        let result = perform_query(&context.dgraph_client, dbg!(&query), vars);
         match dbg!(result) {
-            Ok(result) => match serde_json::from_value(result["haiku"][0].clone()) {
-                Ok(haiku) => return Ok(haiku),
-                Err(err) => error!("{} - {:?}", DB_QUERY_RESULT_PARSE_ERR, err),
-            },
+            Ok(result) => {
+                if let Some(haikus) = result.get("haiku") {
+                    if let Some(json) = haikus.get(0) {
+                        return Ok(Some(Haiku::from(json.clone())));
+                    } else {
+                        return Ok(None);
+                    }
+                } else {
+                    error!("{} - TODO err msg", DB_QUERY_RESULT_PARSE_ERR);
+                }
+            }
             Err(err) => error!("{} - {:?}", DB_QUERY_RESULT_ERR, err),
         };
         Err(FieldError::new(
